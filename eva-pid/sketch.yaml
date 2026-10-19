@@ -1,1 +1,2 @@
-default_fqbn: arduino:avr:nano
+default_fqbn: arduino:avr:nano:cpu=atmega328old
+default_port: /dev/ttyUSB0

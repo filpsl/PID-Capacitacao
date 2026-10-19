@@ -18,9 +18,9 @@ const unsigned long PERIODO_US = 40000;
 SimpleKalmanFilter filtroDist(4.0, 2.0, 0.3);
 
 // Variáveis de Controle
-float Kp = 0, Ki = 0, Kd = 0;
+float Kp = 4, Ki = 0.1, Kd = 0.2;
 float erroAnterior, integralErro;
-float dist, erro, pidOut, modPidOut;
+float dist, erro, pidOut;
 
 // Saídas do Controle
 float P, I, D, pwmEsq;
@@ -36,7 +36,7 @@ float lerDistanciaBruta() {
   // Equação de leitura
   float cm = 10650.08 * pow(leitura,-0.935) - 10;
   
-  if (cm < 20) cm = 20;
+  if (cm < 15) cm = 15;
   if (cm > 70) cm = 70;
   
   return cm;
@@ -45,7 +45,6 @@ float lerDistanciaBruta() {
 float lerDistancia() {
   return filtroDist.updateEstimate(lerDistanciaBruta());
 }
-
 void iniciarFiltro(){
   const int N = 10;
   float soma = 0;
@@ -59,6 +58,7 @@ void iniciarFiltro(){
 void acionarMotores(int pwmEsq) {
   analogWrite(PIN_DIR_PWM, VELOCIDADE_BASE); // roda direita fixa
   analogWrite(PIN_ESQ_PWM, pwmEsq);          // roda esquerda variável
+  // Serial.println(pwmEsq);
 }
 
 void setup(){
@@ -92,7 +92,7 @@ void loop(){
   // cáculo do erro
   dist = lerDistancia();
   erro = SETPOINT_DISTANCIA - dist;
-  
+  // Serial.println(erro);
   // cálculos de tempo
   dt = (agora - ultimo_comando) / 1e6; // passando para segundos
   ultimo_comando = agora;
@@ -104,7 +104,7 @@ void loop(){
   // calculando o I 
   I += Ki * erro * dt;
   if (I > I_MAX) I = I_MAX;
-  if (I < I_MAX) I = -I_MAX;
+  if (I < -I_MAX) I = -I_MAX;
 
   // Calculando o D
   D = Kd * (erro - erroAnterior) / dt;
@@ -119,6 +119,14 @@ void loop(){
   
   // Roda Esquerda (Controlada)
   pwmEsq = VELOCIDADE_BASE + (int)pidOut;
+  // Serial.print("P: ");
+  // Serial.print(P);
+  // Serial.print(" | I: ");
+  // Serial.print(I);
+  // Serial.print(" | D: ");
+  // Serial.print(D);
+  // Serial.print(" | erro: ");
+  // Serial.println(erro);
   acionarMotores(pwmEsq);
 }
 
