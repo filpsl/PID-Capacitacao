@@ -1,64 +1,70 @@
 #include "Kalman.h"
-#include <time.h>
-
 
 // --- PINAGEM DO HARDWARE ---
 const int PIN_ESQ_PWM = 5;
 const int PIN_ESQ_GND = 3;
 const int PIN_DIR_PWM = 9;
 const int PIN_DIR_GND = 6;
-const int PIN_LED     = 7;
 const int PIN_SENSOR  = A0;
 
 // --- CONSTANTES DO ROBÔ --- 
 const int SETPOINT_DISTANCIA = 45;
-const int VELOCIDADE_BASE = 160;                
+const int VELOCIDADE_BASE = 160;
+const int PID_MAX = 255 - VELOCIDADE_BASE;
+const int I_MAX = PID_MAX / 2;
+const unsigned long PERIODO_US = 40000;
 
 // --- Inicialização do Filtro de Kalman
 SimpleKalmanFilter filtroDist(4.0, 2.0, 0.3);
 
 // Variáveis de Controle
 float Kp = 0, Ki = 0, Kd = 0;
-float erroAnterior = 0, integralErro = 0;
-float dist = 0, erro = 0, pid_out = 0;
+float erroAnterior, integralErro;
+float dist, erro, pidOut, modPidOut;
+
+// Saídas do Controle
+float P, I, D, pwmEsq;
 
 // Varáveis de Tempo
-clock_t agora, ultimo_comando, dt;
+unsigned long agora, ultimo_comando;
+float dt;
 
 // --- FUNÇÕES AUXILIARES --- 
-float lerDistancia() {
+float lerDistanciaBruta() {
   int leitura = analogRead(PIN_SENSOR);
-  
-  // 1. PROTEÇÃO MATEMÁTICA (Do código novo/sugestão anterior)
-  if (leitura <= 0) return 90; 
 
-  // Sua equação calibrada
+  // Equação de leitura
   float cm = 10650.08 * pow(leitura,-0.935) - 10;
   
   if (cm < 20) cm = 20;
   if (cm > 70) cm = 70;
+  
+  return cm;
+}
 
-  float cm_filtrado = filtroDist.updateEstimate(cm);
-  return cm_filtrado;
+float lerDistancia() {
+  return filtroDist.updateEstimate(lerDistanciaBruta());
+}
+
+void iniciarFiltro(){
+  const int N = 10;
+  float soma = 0;
+  for (int i = 0; i < N; i++){
+    soma += lerDistanciaBruta();
+    delay(40);
+  }
+  filtroDist.setEstimate(soma / N);
 }
 
 void acionarMotores(int pwmEsq) {
-  // Roda Direita (Fixa)
-  analogWrite(PIN_DIR_PWM, VELOCIDADE_BASE);
-  
-  // Limites de segurança (0-255)
-  if (pwmEsq > 255) pwmEsq = 255;
-  if (pwmEsq < 0) pwmEsq = 0;
-
-  analogWrite(PIN_ESQ_PWM, pwmEsq);
+  analogWrite(PIN_DIR_PWM, VELOCIDADE_BASE); // roda direita fixa
+  analogWrite(PIN_ESQ_PWM, pwmEsq);          // roda esquerda variável
 }
 
 void setup(){
-  // 2. CORREÇÃO: Serial no lugar certo e velocidade padrão
+
   Serial.begin(115200);
 
-  // 3. A CORREÇÃO CRUCIAL (Copiada do seu código novo)
-  // Sem isso, os motores flutuam e travam o Arduino
   pinMode(PIN_ESQ_PWM, OUTPUT);
   pinMode(PIN_ESQ_GND, OUTPUT);
   pinMode(PIN_DIR_PWM, OUTPUT);
@@ -68,47 +74,51 @@ void setup(){
   digitalWrite(PIN_ESQ_GND, LOW);
   digitalWrite(PIN_DIR_GND, LOW);
   
-  Serial.println("EVA PID Simples Iniciado");
+  iniciarFiltro();
+  
+  dist = lerDistancia();
+  erro = SETPOINT_DISTANCIA - dist; 
+  erroAnterior = erro;
+  ultimo_comando = micros();
 
-  // Para não dar ERRO
-  ultimo_comando = clock();
+  // Serial.println("EVA PID Simples Iniciado");
 }
 
 void loop(){
-  // -- CÁLCULO DO ERRO
+  // portão do controle
+  agora = micros();
+  if (agora - ultimo_comando < PERIODO_US) return;
+  
+  // cáculo do erro
   dist = lerDistancia();
   erro = SETPOINT_DISTANCIA - dist;
-
-  // --- CÁLCULO PID ---
-  float P = Kp * erro;
   
-  integralErro += erro;
-  // Anti-windup
-  if(integralErro > 30) integralErro = 30; 
-  if(integralErro < -30) integralErro = -30;
+  // cálculos de tempo
+  dt = (agora - ultimo_comando) / 1e6; // passando para segundos
+  ultimo_comando = agora;
   
-  float I = Ki * integralErro;
+  // ---------------- ------CÁLCULO PID ------------------------- 
+  // calculando o P
+  P = Kp * erro;
+   
+  // calculando o I 
+  I += Ki * erro * dt;
+  if (I > I_MAX) I = I_MAX;
+  if (I < I_MAX) I = -I_MAX;
 
-  // Calculando o Termo Derivativo
-  agora = clock();
-  dt = (double)(agora - ultimo_comando) / CLOCKS_PER_SEC;
-  float D = Kd * (erro - erroAnterior) / dt;
+  // Calculando o D
+  D = Kd * (erro - erroAnterior) / dt;
   
   erroAnterior = erro;
-  pid_out = P + I + D;
- 
-  // Roda Esquerda (Controlada)
-  int pwmEsq = VELOCIDADE_BASE + (int)pid_out;
-  // Debug limpo
-  Serial.print("Dist: ");
-  Serial.print(dist);
-  Serial.print(" | I: ");
-  Serial.println(I);
+  pidOut = P + I + D;
+  
+  if (pidOut > PID_MAX) pidOut = PID_MAX;
+  if (pidOut < -PID_MAX) pidOut = -PID_MAX;
 
+  // ------------------- FIM CÁLCULO PID ----------------------
+  
+  // Roda Esquerda (Controlada)
+  pwmEsq = VELOCIDADE_BASE + (int)pidOut;
   acionarMotores(pwmEsq);
-  
-  // Registrando o momento do último comando
-  ultimo_comando = clock();
-  
-  delay(10); // Estabilidade do loop
 }
+
