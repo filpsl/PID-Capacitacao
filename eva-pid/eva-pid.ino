@@ -18,7 +18,7 @@ const unsigned long PERIODO_US = 40000;
 SimpleKalmanFilter filtroDist(4.0, 2.0, 0.3);
 
 // Variáveis de Controle
-float Kp = 4, Ki = 0.1, Kd = 0.2;
+float Kp = 0, Ki = 0, Kd = 0;
 float erroAnterior, integralErro;
 float dist, erro, pidOut;
 
