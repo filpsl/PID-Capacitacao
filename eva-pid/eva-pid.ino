@@ -98,35 +98,10 @@ void loop(){
   ultimo_comando = agora;
   
   // ---------------- ------CÁLCULO PID ------------------------- 
-  // calculando o P
-  P = Kp * erro;
-   
-  // calculando o I 
-  I += Ki * erro * dt;
-  if (I > I_MAX) I = I_MAX;
-  if (I < -I_MAX) I = -I_MAX;
-
-  // Calculando o D
-  D = Kd * (erro - erroAnterior) / dt;
-  
-  erroAnterior = erro;
-  pidOut = P + I + D;
-  
-  if (pidOut > PID_MAX) pidOut = PID_MAX;
-  if (pidOut < -PID_MAX) pidOut = -PID_MAX;
-
   // ------------------- FIM CÁLCULO PID ----------------------
   
   // Roda Esquerda (Controlada)
   pwmEsq = VELOCIDADE_BASE + (int)pidOut;
-  // Serial.print("P: ");
-  // Serial.print(P);
-  // Serial.print(" | I: ");
-  // Serial.print(I);
-  // Serial.print(" | D: ");
-  // Serial.print(D);
-  // Serial.print(" | erro: ");
-  // Serial.println(erro);
   acionarMotores(pwmEsq);
 }
 
